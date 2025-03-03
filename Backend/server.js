@@ -5,6 +5,7 @@ const dotenv = require('dotenv');
 const authRoutes = require('./routes/authRoutes');
 const cashReserveRoutes = require('./routes/cashReserveRoutes');
 const transactionRoutes = require('./routes/transactionRoutes');
+const budgetRoutes = require('./routes/budgetRoutes');
 const { protectRoute } = require('./middleware/authMiddleware');
 
 // Load environment variables
@@ -29,6 +30,7 @@ mongoose.connect(process.env.MONGODB_URI)
 app.use('/api/auth', authRoutes);
 app.use('/api/reserves', cashReserveRoutes);
 app.use('/api/transactions', transactionRoutes);
+app.use('/api/budgets', budgetRoutes);
 
 // Protected route example
 app.get('/api/protected', protectRoute, (req, res) => {
