@@ -6,7 +6,10 @@ const authRoutes = require('./routes/authRoutes');
 const cashReserveRoutes = require('./routes/cashReserveRoutes');
 const transactionRoutes = require('./routes/transactionRoutes');
 const budgetRoutes = require('./routes/budgetRoutes');
+const reminderRoutes = require('./routes/reminderRoutes');
 const { protectRoute } = require('./middleware/authMiddleware');
+const http = require('http');
+const JobService = require('./services/jobService');
 
 // Load environment variables
 dotenv.config();
@@ -31,6 +34,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/reserves', cashReserveRoutes);
 app.use('/api/transactions', transactionRoutes);
 app.use('/api/budgets', budgetRoutes);
+app.use('/api/reminders', reminderRoutes);
 
 // Protected route example
 app.get('/api/protected', protectRoute, (req, res) => {
@@ -53,6 +57,12 @@ app.use((err, req, res, next) => {
 
 // Start server
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
+const server = http.createServer(app);
+
+// Initialize job service with the server instance
+new JobService(server);
+
+// Update server start
+server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });

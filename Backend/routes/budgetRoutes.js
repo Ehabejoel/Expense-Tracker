@@ -1,8 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { protectRoute } = require('../middleware/authMiddleware');
-const Budget = require('../models/budget');
-const Transaction = require('../models/transaction');
+const { Transaction, Budget } = require('../models');
 const { startOfMonth, endOfMonth, startOfWeek, endOfWeek, startOfDay, endOfDay } = require('date-fns');
 
 // Get all budgets for a user
