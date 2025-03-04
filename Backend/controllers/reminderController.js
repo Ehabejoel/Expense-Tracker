@@ -1,5 +1,6 @@
 const { Reminder, Transaction } = require('../models');
 const { startOfDay, addDays, addWeeks, addMonths, addYears, format } = require('date-fns');
+const CashReserve = require('../models/cashReserve');
 
 // Create a new reminder
 exports.createReminder = async (req, res) => {
@@ -83,19 +84,23 @@ exports.deleteReminder = async (req, res) => {
 
 // Handle reminder action (create transaction or postpone)
 exports.handleReminderAction = async (req, res) => {
+  const session = await Reminder.startSession();
+  session.startTransaction();
+
   try {
-    const { action } = req.body; // 'create' or 'postpone'
+    const { action } = req.body;
     const reminder = await Reminder.findOne({
       _id: req.params.id,
       userId: req.user._id,
-    });
+    }).session(session);
 
     if (!reminder) {
+      await session.abortTransaction();
       return res.status(404).json({ message: 'Reminder not found' });
     }
 
     if (action === 'create') {
-      // Create the transaction
+      // Create transaction and update balance
       const transaction = new Transaction({
         title: reminder.title,
         type: reminder.type,
@@ -106,38 +111,65 @@ exports.handleReminderAction = async (req, res) => {
         notes: reminder.notes,
         userId: req.user._id,
       });
-      await transaction.save();
+      
+      await transaction.save({ session });
 
-      // Update reminder's last triggered date and next trigger date
+      // Update cash reserve balance
+      const modifier = reminder.type === 'income' ? 1 : -1;
+      const updatedReserve = await CashReserve.findByIdAndUpdate(
+        reminder.cashReserveId,
+        { $inc: { balance: modifier * reminder.amount } },
+        { session, new: true }
+      );
+
+      console.log('Reserve balance updated from reminder:', {
+        id: updatedReserve._id,
+        type: reminder.type,
+        amount: reminder.amount,
+        newBalance: updatedReserve.balance
+      });
+
+      // Update reminder scheduling
       reminder.lastTriggered = new Date();
-      let nextTriggerDate = new Date(reminder.date);
-      
-      switch (reminder.cycle) {
-        case 'daily':
-          nextTriggerDate = addDays(nextTriggerDate, 1);
-          break;
-        case 'weekly':
-          nextTriggerDate = addWeeks(nextTriggerDate, 1);
-          break;
-        case 'monthly':
-          nextTriggerDate = addMonths(nextTriggerDate, 1);
-          break;
-        case 'yearly':
-          nextTriggerDate = addYears(nextTriggerDate, 1);
-          break;
-      }
-      
-      reminder.date = nextTriggerDate;
-      await reminder.save();
+      reminder.date = calculateNextTriggerDate(reminder);
+      await reminder.save({ session });
 
-      res.json({ message: 'Transaction created', transaction });
+      await session.commitTransaction();
+      res.json({ 
+        message: 'Transaction created',
+        transaction,
+        updatedBalance: updatedReserve.balance
+      });
     } else if (action === 'postpone') {
       // Postpone for 1 hour
       reminder.date = new Date(Date.now() + 60 * 60 * 1000);
-      await reminder.save();
+      await reminder.save({ session });
+      await session.commitTransaction();
       res.json({ message: 'Reminder postponed' });
     }
   } catch (error) {
+    await session.abortTransaction();
+    console.error('Reminder action error:', error);
     res.status(500).json({ message: error.message });
+  } finally {
+    session.endSession();
   }
 };
+
+// Helper function to calculate next trigger date
+function calculateNextTriggerDate(reminder) {
+  let nextTriggerDate = new Date(reminder.date);
+  
+  switch (reminder.cycle) {
+    case 'daily':
+      return addDays(nextTriggerDate, 1);
+    case 'weekly':
+      return addWeeks(nextTriggerDate, 1);
+    case 'monthly':
+      return addMonths(nextTriggerDate, 1);
+    case 'yearly':
+      return addYears(nextTriggerDate, 1);
+    default:
+      return nextTriggerDate;
+  }
+}
