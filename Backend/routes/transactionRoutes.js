@@ -3,6 +3,7 @@ const router = express.Router();
 const { protectRoute } = require('../middleware/authMiddleware');
 const { Transaction } = require('../models');
 const CashReserve = require('../models/cashReserve');
+const NotificationService = require('../services/notificationService');
 
 // Helper function to update cash reserve balances
 async function updateCashReserveBalances(transaction, isDelete = false) {
@@ -89,6 +90,37 @@ router.post('/', protectRoute, async (req, res) => {
       
     res.status(201).json(populatedTransaction);
   } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
+});
+
+// Create a new transaction from a reminder
+router.post('/from-reminder/:reminderId', protectRoute, async (req, res) => {
+  try {
+    console.log(`Processing transaction from reminder ID: ${req.params.reminderId}`);
+    
+    // Mark the reminder as triggered BEFORE creating the transaction
+    // This prevents race conditions with the notification service
+    await NotificationService.markReminderAsTriggered(req.params.reminderId);
+    console.log(`Reminder ${req.params.reminderId} marked as triggered`);
+    
+    const transaction = new Transaction({
+      ...req.body,
+      userId: req.user._id,
+    });
+    
+    await transaction.save();
+    
+    // Update cash reserve balances after creating transaction
+    await updateCashReserveBalances(transaction);
+    
+    const populatedTransaction = await Transaction.findById(transaction._id)
+      .populate('cashReserveId', 'name currency')
+      .populate('targetReserveId', 'name currency');
+    
+    res.status(201).json(populatedTransaction);
+  } catch (error) {
+    console.error('Error creating transaction from reminder:', error);
     res.status(400).json({ message: error.message });
   }
 });

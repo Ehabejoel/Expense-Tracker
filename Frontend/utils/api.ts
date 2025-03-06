@@ -1,7 +1,6 @@
 import { LoginData, RegisterData, AuthResponse, User } from '@/types/auth';
 import { authStore } from '@/utils/authStore';
-
-const API_URL = 'http://172.20.10.4:5000/api';
+import { API_URL } from '@/config/api';
 
 export const login = async (data: LoginData): Promise<AuthResponse> => {
   const response = await fetch(`${API_URL}/auth/login`, {

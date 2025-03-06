@@ -1,75 +1,90 @@
-import { io } from 'socket.io-client';
+import { Alert, Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
-import { Platform } from 'react-native';
-import { API_URL } from './api';
-import { createTransaction } from './api';
+import { handleReminderAction } from './api';
+import { showSuccessToast, showErrorToast } from './toast';
+import { socketService } from './socket';
 
 class NotificationHandler {
-  private socket: any;
+  initialized = false;
 
   async initialize() {
-    // Request notification permissions
-    await this.requestPermissions();
-
-    // Connect to WebSocket
-    this.socket = io(API_URL);
+    if (this.initialized) return;
     
-    this.socket.on('reminderNotifications', (notifications: any[]) => {
-      notifications.forEach(notification => {
-        this.scheduleNotification(notification);
-      });
-    });
-
-    // Handle notification response
-    Notifications.addNotificationResponseReceivedListener(this.handleNotificationResponse);
-  }
-
-  private async requestPermissions() {
-    if (Platform.OS === 'android') {
-      await Notifications.setNotificationChannelAsync('reminders', {
-        name: 'Reminders',
-        importance: Notifications.AndroidImportance.MAX,
-        vibrationPattern: [0, 250, 250, 250],
-      });
-    }
-
-    const { status } = await Notifications.requestPermissionsAsync();
-    if (status !== 'granted') {
-      console.log('Notification permissions not granted');
-    }
-  }
-
-  private async scheduleNotification(notification: any) {
-    await Notifications.scheduleNotificationAsync({
-      content: {
-        title: notification.title,
-        body: notification.message,
-        data: notification.data,
-      },
-      trigger: {
-        hour: parseInt(notification.scheduledTime.split(':')[0]),
-        minute: parseInt(notification.scheduledTime.split(':')[1]),
-        repeats: false,
-      },
-    });
-  }
-
-  private handleNotificationResponse = async (response: any) => {
-    const data = response.notification.request.content.data;
+    console.log('Initializing notification handler...');
     
-    // Show confirmation dialog and handle user choice
-    // If user confirms, create transaction
+    // Configure notifications
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowAlert: true,
+        shouldPlaySound: true,
+        shouldSetBadge: false,
+      }),
+    });
+    
+    // Wait for socket connection and setup listeners
+    await this.setupSocketListeners();
+    
+    this.initialized = true;
+    console.log('Notification handler initialized');
+  }
+  
+  private async setupSocketListeners() {
+    console.log('Setting up socket listeners...');
     try {
-      await createTransaction({
-        title: data.title,
-        type: data.type,
-        amount: data.amount,
-        category: data.category,
-        cashReserveId: data.cashReserveId,
-        date: new Date(),
+      const socket = await socketService.getSocket();
+      
+      if (!socket) {
+        throw new Error('Failed to get socket connection');
+      }
+      
+      socket.on('reminderNotifications', (notifications: any[]) => {
+        console.log('Received reminder notifications:', notifications);
+        notifications.forEach(notification => {
+          this.showReminderAlert(notification);
+        });
       });
+      
+      console.log('Socket listeners setup complete');
+      return true;
     } catch (error) {
-      console.error('Error creating transaction from reminder:', error);
+      console.error('Error setting up socket listeners:', error);
+      // Retry setup after a delay
+      setTimeout(() => this.setupSocketListeners(), 5000);
+      return false;
+    }
+  }
+
+  showReminderAlert(notification: any) {
+    Alert.alert(
+      notification.title,
+      notification.message,
+      [
+        {
+          text: 'Create Transaction',
+          onPress: () => this.handleReminderAction(notification.data.reminderId, 'create')
+        },
+        {
+          text: 'Remind Later',
+          onPress: () => this.handleReminderAction(notification.data.reminderId, 'postpone')
+        },
+        {
+          text: 'Dismiss',
+          style: 'cancel'
+        }
+      ]
+    );
+  }
+  
+  async handleReminderAction(reminderId: string, action: 'create' | 'postpone') {
+    try {
+      await handleReminderAction(reminderId, action);
+      if (action === 'create') {
+        showSuccessToast('Success', 'Transaction created successfully');
+      } else {
+        showSuccessToast('Success', 'Reminder postponed by 1 hour');
+      }
+    } catch (error) {
+      showErrorToast('Error', 'Failed to handle reminder action');
     }
   }
 }

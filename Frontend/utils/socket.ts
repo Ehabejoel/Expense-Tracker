@@ -1,8 +1,10 @@
-import { io, Socket } from 'socket.io-client';
+import io, { Socket } from 'socket.io-client';
+import { API_URL } from '@/config/api';
 
 class SocketService {
   private static instance: SocketService;
-  private socket: Socket | null = null;
+  socket: Socket | null = null;
+  connectionPromise: Promise<Socket> | null = null;
 
   private constructor() {}
 
@@ -13,22 +15,43 @@ class SocketService {
     return SocketService.instance;
   }
 
-  connect() {
-    if (!this.socket) {
-      this.socket = io('http://172.20.10.4:5000', {
+  connect(): Promise<Socket> {
+    if (this.connectionPromise) {
+      return this.connectionPromise;
+    }
+
+    // Remove /api from the URL for socket connection
+    const socketUrl = API_URL.replace('/api', '');
+
+    this.connectionPromise = new Promise((resolve, reject) => {
+      console.log('Connecting to socket namespace:', `${socketUrl}/reminders`);
+      
+      this.socket = io(`${socketUrl}/reminders`, {
         transports: ['websocket'],
-        autoConnect: true
+        reconnection: true,
+        reconnectionAttempts: 5,
+        reconnectionDelay: 1000
       });
 
       this.socket.on('connect', () => {
-        console.log('Connected to reminder notifications');
+        console.log('Socket connected successfully to reminders namespace');
+        resolve(this.socket!);
       });
 
       this.socket.on('connect_error', (error) => {
         console.error('Socket connection error:', error);
+        reject(error);
       });
-    }
-    return this.socket;
+
+      // Set a timeout for the connection
+      setTimeout(() => {
+        if (!this.socket?.connected) {
+          reject(new Error('Socket connection timeout'));
+        }
+      }, 5000);
+    });
+
+    return this.connectionPromise;
   }
 
   disconnect() {
@@ -36,13 +59,19 @@ class SocketService {
       this.socket.disconnect();
       this.socket = null;
     }
+    this.connectionPromise = null;
   }
 
-  getSocket() {
-    if (!this.socket) {
-      return this.connect();
+  async getSocket(): Promise<Socket | null> {
+    try {
+      if (this.socket?.connected) {
+        return this.socket;
+      }
+      return await this.connect();
+    } catch (error) {
+      console.error('Failed to get socket:', error);
+      return null;
     }
-    return this.socket;
   }
 }
 

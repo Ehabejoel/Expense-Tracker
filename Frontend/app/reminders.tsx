@@ -7,7 +7,6 @@ import { createReminder, getReminders, getCashReserves, Reminder, handleReminder
 import { showSuccessToast, showErrorToast } from '@/utils/toast';
 import { categories } from '@/constants/categories';
 import { formatCurrency } from '@/utils/currency';
-import { socketService } from '@/utils/socket';
 
 export default function RemindersScreen() {
   const [reminders, setReminders] = useState<Reminder[]>([]);
@@ -32,27 +31,6 @@ export default function RemindersScreen() {
 
   useEffect(() => {
     loadData();
-    
-    // Set up WebSocket connection
-    const socket = socketService.connect();
-    
-    socket.on('reminderNotifications', (notifications) => {
-    interface ReminderNotification {
-        title: string;
-        message: string;
-        data: {
-            reminderId: string;
-        };
-    }
-
-    notifications.forEach((notification: ReminderNotification) => {
-        showReminderAlert(notification);
-    });
-    });
-
-    return () => {
-      socketService.disconnect();
-    };
   }, []);
 
   const loadData = async () => {

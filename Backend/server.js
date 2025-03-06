@@ -55,14 +55,16 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Start server
-const PORT = process.env.PORT || 5000;
+// Create HTTP server
 const server = http.createServer(app);
 
 // Initialize job service with the server instance
-new JobService(server);
+const jobService = new JobService(server);
 
-// Update server start
-server.listen(PORT, () => {
+// Start server
+const PORT = process.env.PORT || 5000;
+
+server.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on port ${PORT}`);
+  console.log(`Socket.IO server available at http://localhost:${PORT}/reminders`);
 });

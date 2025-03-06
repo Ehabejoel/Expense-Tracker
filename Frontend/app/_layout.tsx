@@ -63,14 +63,24 @@ export default function RootLayout() {
   }, [loaded]);
 
   useEffect(() => {
-    notificationHandler.initialize();
-  }, []);
+    const initializeServices = async () => {
+      console.log('Initializing app services...');
+      try {
+        // Initialize socket and wait for connection
+        const socket = await socketService.connect();
+        console.log('Socket connected:', socket.connected);
+        
+        // Then initialize notification handler
+        await notificationHandler.initialize();
+      } catch (error) {
+        console.error('Error initializing services:', error);
+      }
+    };
 
-  useEffect(() => {
-    // Initialize socket connection when app starts
-    socketService.connect();
+    initializeServices();
 
     return () => {
+      console.log('Cleaning up app services...');
       socketService.disconnect();
     };
   }, []);
